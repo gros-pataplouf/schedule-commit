@@ -1,52 +1,57 @@
 #!/bin/bash
-echo -e "\n~~~~~ Schedule your commit dates  ~~~~~"
+INIT_LOGFILE () {
+	echo $"~~~~~~~~~~~~Recent commit history~~~~~~~~~~~~ " > timegit.log
+	echo $" " >> timegit.log
+	git log >> timegit.log
+}
 
-LAST_COMMIT=$(git log -1)
+DEL_LOGFILE () {
+	rm timegit.log
+}
 
-LAST_COMMIT_SECONDS=$(git log -1 --format="%at")
+INIT_LOGFILE
 
-LAST_COMMIT_TIME=$(git log -1 --format="%at" | xargs -I{} date -d @{} +%Y/%m/%d_%H:%M:%S)
+MAIN_MENU() {
+	exec 3>&1
 
-NOW_EPOCH=$(date +%s)
+	CUSTOM_DATE=$(dialog --erase-on-exit --ok-label "OK"  --exit-label "OK" \
+		--backtitle "git-time"\
+		--title "" \
+		--tailbox timegit.log 40 80\
+		--and-widget \
+		--form "Custom commit date" \
+	15 50 0 \
+		"Edit" 1 1	"$(date "+%c")" 	2 1 40 0 \
+	2>&1 1>&3)
 
-YEAR_DELTA=0
-DAY_DELTA=0
-HOUR_DELTA=0
-MINUTE_DELTA=0
-SECOND_DELTA=0
+	exec 3>&-
+	ERROR=$(date --date="$CUSTOM_DATE" --debug  2>&1 | grep error)
+	ERROR_LENGTH=$(expr length "$ERROR")
 
-while getopts ":y::d::h::m::s:" opt; do
-  case $opt in
-    y)
-      YEAR_DELTA=$OPTARG
-      ;;
-    d)
-      DAY_DELTA=$OPTARG
-      ;;
-    h)
-      HOUR_DELTA=$OPTARG
-      ;;
-    m)
-      MINUTE_DELTA=$OPTARG
-      ;;
-    s)
-      SECOND_DELTA=$OPTARG
-      ;;
-    
-    \?)
-      echo "Invalid option: -$OPTARG" >&2
-      ;;
-  esac
+}
+
+ERROR_MENU() {
+	dialog --erase-on-exit --backtitle "git-time" \
+    --title "Date input invalid, please confirm to correct" \
+    --msgbox "$1" 20 80\
+
+}
+
+MAIN_MENU
+
+
+while [ $ERROR_LENGTH -gt 0 ]
+do
+	ERROR_MENU "$ERROR"
+	MAIN_MENU
 done
 
-TOTAL_SECONDS_OFFSET=$(($YEAR_DELTA*365*24*60*60+$DAY_DELTA*24*60*60+$HOUR_DELTA*60*60+$MINUTE_DELTA*60+$SECOND_DELTA))
 
-NEW_COMMIT_TIME=$((- $TOTAL_SECONDS_OFFSET))
-NEW_COMMIT_DATE=$(date -d "$NEW_COMMIT_TIME seconds")
-echo Your new commit date is $NEW_COMMIT_DATE, proceed?
-read INPUT
-if [[ $INPUT == "Y" ]]
-then echo Enter your commit message
-read COMMIT_MESSAGE
-GIT_AUTHOR_DATE=$(($(date +%s)  - $TOTAL_SECONDS_OFFSET)) GIT_COMMITTER_DATE=$(($(date +%s) - $TOTAL_SECONDS_OFFSET))  git commit -m "$COMMIT_MESSAGE"
-fi
+DEL_LOGFILE
+
+echo "$@"
+
+
+NEW_DATE=$(date --date="$CUSTOM_DATE")
+GIT_AUTHOR_DATE=$NEW_DATE GIT_COMMITTER_DATE=$NEW_DATE git "$@"
+exit
